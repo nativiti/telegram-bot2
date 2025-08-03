@@ -3,8 +3,10 @@ package main
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"regexp"
+	"sync"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -28,6 +30,11 @@ func main() {
 
 	db := InitDB()
 	defer db.Close()
+
+	// 🔹 Pornim serverul web în paralel
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go startWebServer()
 
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
@@ -53,7 +60,7 @@ func main() {
 				/remove <categorie> - Șterge un reminder după categorie
 				Programat de CHATGPT indrumat de DODE513 firt git-up and down`
 			bot.Send(tgbotapi.NewMessage(userID, helpMsg))
-			continue // ✅ Evită trimiterea mesajului default
+			continue
 		}
 
 		// 🔹 STATUS
@@ -146,4 +153,14 @@ func main() {
 		// 🔹 Mesaj implicit
 		bot.Send(tgbotapi.NewMessage(userID, "📅 Trimite o dată (DD-MM-YYYY) pentru a crea un reminder"))
 	}
+
+	wg.Wait()
+}
+
+func startWebServer() {
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintln(w, "✅ Telegram bot running")
+	})
+	log.Println("🌍 Web server pornit pe portul 8080")
+	http.ListenAndServe(":8080", nil)
 }
