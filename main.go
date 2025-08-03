@@ -50,7 +50,8 @@ func main() {
 				/help - Afișează acest mesaj
 				/status - Vezi dacă botul este activ și câte remindere ai
 				/list - Listează reminderele salvate și zilele rămase
-				/remove <categorie> - Șterge un reminder după categorie`
+				/remove <categorie> - Șterge un reminder după categorie
+				Programat de CHATGPT indrumat de DODE513 firt git-up and down`
 			bot.Send(tgbotapi.NewMessage(userID, helpMsg))
 			continue // ✅ Evită trimiterea mesajului default
 		}
