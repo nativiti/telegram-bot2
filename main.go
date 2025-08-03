@@ -10,7 +10,7 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-var pendingDate = make(map[int64]string) // stocăm date în așteptare per user
+var pendingDate = make(map[int64]string)
 
 func main() {
 	botToken := os.Getenv("BOT_TOKEN")
@@ -43,19 +43,40 @@ func main() {
 		userID := update.Message.Chat.ID
 		text := update.Message.Text
 
-		// Dacă așteptăm categoria după dată
-		if date, ok := pendingDate[userID]; ok {
-			err := AddReminder(db, userID, text, date)
-			if err != nil {
-				msg := tgbotapi.NewMessage(userID, "❌ Eroare la salvare")
-				bot.Send(msg)
-				continue
-			}
-			delete(pendingDate, userID)
-			msg := tgbotapi.NewMessage(userID, fmt.Sprintf("✅ Am salvat %s pentru data %s", text, date))
-			bot.Send(msg)
+		// 🔹 HELP
+		if text == "/help" || text == "help" {
+			helpMsg := `📖 Funcții disponibile:
+
+				/help - Afișează acest mesaj
+				/status - Vezi dacă botul este activ și câte remindere ai
+				/list - Listează reminderele salvate și zilele rămase
+				/remove <categorie> - Șterge un reminder după categorie
+				📅 Trimite o dată (DD-MM-YYYY) pentru a seta un reminder nou
+				`
+			bot.Send(tgbotapi.NewMessage(userID, helpMsg))
 			continue
 		}
+
+		// 🔹 STATUS
+		if text == "/status" {
+			total, nearest, err := GetStatusInfo(db, userID)
+			if err != nil {
+				bot.Send(tgbotapi.NewMessage(userID, "❌ Eroare la citirea statusului"))
+				continue
+			}
+
+			msg := fmt.Sprintf("🤖 Bot activ\n📦 Remindere salvate: %d", total)
+			if nearest != "" {
+				msg += fmt.Sprintf("\n⏳ Următoarea expirare: %s", nearest)
+			} else {
+				msg += "\nℹ️ Nicio expirare setată"
+			}
+
+			bot.Send(tgbotapi.NewMessage(userID, msg))
+			continue
+		}
+
+		// 🔹 LIST
 		if text == "/list" {
 			reminders, err := ListReminders(db, userID)
 			if err != nil {
@@ -86,9 +107,33 @@ func main() {
 			bot.Send(tgbotapi.NewMessage(userID, msgText))
 			continue
 		}
-		// Dacă mesajul este o dată
+
+		// 🔹 REMOVE
+		if len(text) > 8 && text[:8] == "/remove " {
+			category := text[8:]
+			err := RemoveReminder(db, userID, category)
+			if err != nil {
+				bot.Send(tgbotapi.NewMessage(userID, "❌ Eroare la ștergere sau reminder inexistent"))
+			} else {
+				bot.Send(tgbotapi.NewMessage(userID, fmt.Sprintf("🗑️ Reminder '%s' a fost șters", category)))
+			}
+			continue
+		}
+
+		// 🔹 Dacă așteptăm categoria după dată
+		if date, ok := pendingDate[userID]; ok {
+			err := AddReminder(db, userID, text, date)
+			if err != nil {
+				bot.Send(tgbotapi.NewMessage(userID, "❌ Eroare la salvare"))
+				continue
+			}
+			delete(pendingDate, userID)
+			bot.Send(tgbotapi.NewMessage(userID, fmt.Sprintf("✅ Am salvat %s pentru data %s", text, date)))
+			continue
+		}
+
+		// 🔹 Dacă mesajul este o dată
 		if dateRegex.MatchString(text) {
-			// validăm data
 			_, err := time.Parse("02-01-2006", text)
 			if err != nil {
 				bot.Send(tgbotapi.NewMessage(userID, "❌ Format invalid. Folosește DD-MM-YYYY"))
@@ -96,8 +141,9 @@ func main() {
 			}
 			pendingDate[userID] = text
 			bot.Send(tgbotapi.NewMessage(userID, "ℹ️ Ce este această dată? (ex: ITP, Asigurare, Rovinietă)"))
-		} else {
-			bot.Send(tgbotapi.NewMessage(userID, "📅 Trimite o dată (DD-MM-YYYY) pentru a crea un reminder"))
+			continue
 		}
+
+		bot.Send(tgbotapi.NewMessage(userID, "📅 Trimite o dată (DD-MM-YYYY) pentru a crea un reminder"))
 	}
 }

@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"runtime"
 	"time"
 
 	bolt "go.etcd.io/bbolt"
@@ -15,10 +15,18 @@ type Reminder struct {
 	Date     string `json:"date"`
 }
 
+func getDBPath() string {
+	if runtime.GOOS == "windows" {
+		return "reminders.db" // folosit local
+	}
+	return "/root/data/reminders.db" // folosit în Docker/Linux
+}
+
 func InitDB() *bolt.DB {
-	db, err := bolt.Open("reminders.db", 0600, nil)
+	path := getDBPath()
+	db, err := bolt.Open(path, 0600, nil)
 	if err != nil {
-		log.Fatalf("Eroare DB: %v", err)
+		panic(err)
 	}
 
 	err = db.Update(func(tx *bolt.Tx) error {
@@ -26,17 +34,26 @@ func InitDB() *bolt.DB {
 		return err
 	})
 	if err != nil {
-		log.Fatalf("Eroare creare bucket: %v", err)
+		panic(err)
 	}
+	fmt.Println("✅ DB Path:", path)
 	return db
+}
+
+func AddReminder(db *bolt.DB, userID int64, category, date string) error {
+	return db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("reminders"))
+		key := fmt.Sprintf("%d_%s", userID, category)
+		data, _ := json.Marshal(Reminder{UserID: userID, Category: category, Date: date})
+		return b.Put([]byte(key), data)
+	})
 }
 
 func ListReminders(db *bolt.DB, userID int64) ([]Reminder, error) {
 	var reminders []Reminder
-
 	err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte("reminders"))
-		return b.ForEach(func(k, v []byte) error {
+		return b.ForEach(func(_, v []byte) error {
 			var r Reminder
 			if err := json.Unmarshal(v, &r); err != nil {
 				return err
@@ -50,21 +67,41 @@ func ListReminders(db *bolt.DB, userID int64) ([]Reminder, error) {
 	return reminders, err
 }
 
-func AddReminder(db *bolt.DB, userID int64, category, date string) error {
-	id := fmt.Sprintf("%d-%d", userID, time.Now().UnixNano())
-	reminder := Reminder{
-		UserID:   userID,
-		Category: category,
-		Date:     date,
-	}
-
-	data, err := json.Marshal(reminder)
-	if err != nil {
-		return err
-	}
-
+func RemoveReminder(db *bolt.DB, userID int64, category string) error {
 	return db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte("reminders"))
-		return b.Put([]byte(id), data)
+		key := fmt.Sprintf("%d_%s", userID, category)
+		if b.Get([]byte(key)) == nil {
+			return fmt.Errorf("Reminder inexistent")
+		}
+		return b.Delete([]byte(key))
 	})
+}
+
+func GetStatusInfo(db *bolt.DB, userID int64) (int, string, error) {
+	count := 0
+	nearestDate := ""
+	var nearestTime time.Time
+
+	err := db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("reminders"))
+		return b.ForEach(func(_, v []byte) error {
+			var r Reminder
+			if err := json.Unmarshal(v, &r); err != nil {
+				return err
+			}
+			if r.UserID == userID {
+				count++
+				expDate, err := time.Parse("02-01-2006", r.Date)
+				if err == nil {
+					if nearestTime.IsZero() || expDate.Before(nearestTime) {
+						nearestTime = expDate
+						nearestDate = r.Date
+					}
+				}
+			}
+			return nil
+		})
+	})
+	return count, nearestDate, err
 }
