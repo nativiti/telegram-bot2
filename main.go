@@ -50,11 +50,9 @@ func main() {
 				/help - Afișează acest mesaj
 				/status - Vezi dacă botul este activ și câte remindere ai
 				/list - Listează reminderele salvate și zilele rămase
-				/remove <categorie> - Șterge un reminder după categorie
-				📅 Trimite o dată (DD-MM-YYYY) pentru a seta un reminder nou
-				`
+				/remove <categorie> - Șterge un reminder după categorie`
 			bot.Send(tgbotapi.NewMessage(userID, helpMsg))
-			continue
+			continue // ✅ Evită trimiterea mesajului default
 		}
 
 		// 🔹 STATUS
@@ -144,6 +142,7 @@ func main() {
 			continue
 		}
 
+		// 🔹 Mesaj implicit
 		bot.Send(tgbotapi.NewMessage(userID, "📅 Trimite o dată (DD-MM-YYYY) pentru a crea un reminder"))
 	}
 }
